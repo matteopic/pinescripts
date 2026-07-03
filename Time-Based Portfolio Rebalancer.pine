@@ -1,0 +1,119 @@
+//@version=6
+indicator('Portafoglio', overlay = false)
+
+// Parametri del portafoglio
+initial_balance = input.float(1000, title = 'Saldo iniziale (USD)')
+rebalancing_period_months = input.int(4, title = 'Periodo di ribilanciamento (mesi)')
+var start_date = input.time(timestamp('2021-01-01'), title = 'Data di inizio')
+
+
+// Asset portafoglio
+asset1 = input.symbol('BINANCE:BNBUSD', '#1', inline="01", group = 'Assets')
+alloc1 = input.float(40, 'Allocazione (%)', group = 'Assets', inline="01", minval = 0, maxval = 100) / 100
+color1 = input.color( #F57C00, group = 'Assets', inline="01")
+float value1 = na
+
+asset2 = input.symbol('BINANCE:PAXGUSD', '#2', inline="02", group = 'Assets')
+alloc2 = input.float(40, 'Allocazione (%)', group = 'Assets', inline="02", minval = 0, maxval = 100) / 100
+color2 = input.color( #FBC02D, group = 'Assets', inline="02")
+float value2 = na
+
+asset3 = input.symbol('BINANCE:ETHUSD', '#3', inline="03", group = 'Assets')
+alloc3 = input.float(10, 'Allocazione (%)', group = 'Assets', inline="03", minval = 0, maxval = 100) / 100
+color3 = input.color( #303F9F, group = 'Assets', inline="03")
+float value3 = na
+
+asset4 = input.symbol('BINANCE:INJUSD', '#4', inline="04", group = 'Assets')
+alloc4 = input.float(10, 'Allocazione (%)', group = 'Assets', inline="04", minval = 0, maxval = 100) / 100
+color4 = input.color( #0288D1, group = 'Assets', inline="04")
+float value4 = na
+
+asset5 = input.symbol('', '#5', inline="05", group = 'Assets')
+alloc5 = input.float(0, 'Allocazione (%)', group = 'Assets', inline="05", minval = 0, maxval = 100) / 100
+color5 = input.color( #02c0d1, group = 'Assets', inline="05")
+float value5 = na
+
+// Date to start the script (format: year, month, day)
+//start_date = timestamp(2021, 1, 1, 0, 0)
+var next_rebalance_time = start_date
+
+//log.info(str.tostring( end_date ))
+
+float portfolio_value = na
+
+// Check if the current bar's timestamp is after the start_date
+if time >= start_date
+
+    assets_array = array.from(asset1, asset2, asset3, asset4, asset5)
+    alloc_array = array.from(alloc1, alloc2, alloc3, alloc4, alloc5)
+
+    close_array = array.new<float>(0)
+    for [index, asset] in assets_array
+        asset_close = request.security(asset, timeframe.period, close)
+        if na(asset_close)
+            asset_close := 0
+
+        array.push(close_array, asset_close)
+
+    // Run at first iteration
+    var array<float> amount_array = na
+    if na(amount_array)
+        // Calcolo quanto di ciascun asset è presente nel portafoglio
+        amount_array := array.new<float>(0)
+        for [index, asset_alloc_perc] in alloc_array
+            asset_close = close_array.get(index)
+            amount = .0        
+            if asset_close > .0
+                amount := initial_balance * asset_alloc_perc / asset_close
+
+            array.push(amount_array, amount) // total asset count
+
+    // Calcolo del valore corrente del portafoglio
+    portfolio_value := 0
+    for [index, asset_amount] in amount_array
+        //asset_amount = amount_array.get(index)
+        asset_close = close_array.get(index)
+        if asset_close > .0
+            asset_value = asset_amount * asset_close
+            portfolio_value := portfolio_value + asset_value
+
+    // Ribilanciamento ogni X mesi
+    if time >= next_rebalance_time
+        next_rebalance_time := timestamp( year(next_rebalance_time), month(next_rebalance_time) + rebalancing_period_months , dayofmonth(next_rebalance_time) )
+
+        line.new(bar_index, 0, bar_index, close, extend = extend.both)
+        before = amount_array
+        debug_infos = '\n'
+        amount_array := array.new<float>(0)
+        for [index, value] in alloc_array
+            asset = assets_array.get(index)
+            asset_alloc = alloc_array.get(index)
+            asset_close = close_array.get(index)
+            amount = .0        
+            if asset_close > .0            
+                amount := portfolio_value * asset_alloc / asset_close
+            array.push(amount_array, amount)
+            
+            old_amount = before.get(index)
+            debug_infos += str.tostring(asset) +  '('+str.tostring(asset_alloc*100)+'%): ' + str.tostring(old_amount) + ' -> ' + str.tostring(amount) + '\n'
+        log.info(debug_infos)
+
+    value1 := close_array.get(0) * amount_array.get(0)
+    value2 := close_array.get(1) * amount_array.get(1)
+    value3 := close_array.get(2) * amount_array.get(2)
+    value4 := close_array.get(3) * amount_array.get(3)
+    value5 := close_array.get(4) * amount_array.get(4)
+
+// Visualizzazione
+plot(value1 + value2 + value3 + value4 + value5, '#1', color1, style=plot.style_area, trackprice=false, display=display.pane)
+plot(value2 + value3 + value4 + value5, '#2', color2, style=plot.style_area, trackprice=false, display=display.pane)
+plot(value3 + value4 + value5, '#3', color3, style=plot.style_area, trackprice=false, display=display.pane)
+plot(value4 + value5, '#4', color4, style=plot.style_area, trackprice=false, display=display.pane)
+plot(value5, '#5', color5, style=plot.style_area, trackprice=false, display=display.pane)
+
+plot(portfolio_value, 'Valore Portafoglio', color = color.green, linewidth = 2)
+plot(value1, '#1', color = color1, display = display.data_window)
+plot(value2, '#2', color = color2, display = display.data_window)
+plot(value3, '#3', color = color3, display = display.data_window)
+plot(value4, '#4', color = color4, display = display.data_window)
+plot(value5, '#5', color = color5, display = display.data_window)
